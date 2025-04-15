@@ -1,0 +1,52 @@
+#!/bin/bash
+#SBATCH --job-name=my_array_job
+#SBATCH --output=output_directory/output_%A_%a.out  # Save output in specific directory
+#SBATCH --error=error_directory/error_%A_%a.err   # Save error in specific directory
+#SBATCH --array=0-1319   # Adjusted array range based on total combinations
+#SBATCH --time=02:00:00  
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=4G
+
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=federica.sibilla@unil.ch
+
+# Load necessary modules (if any)
+module load gcc python
+
+# Activate the Python virtual environment
+source insert path to environment/bin/activate
+
+# Define the directories for output and error logs
+output_dir="output_directory"
+error_dir="error_directory"
+
+# Create output and error directories if they do not exist
+mkdir -p $output_dir
+mkdir -p $error_dir
+
+# Define arrays of parameters
+index_values=($(seq 0 659))
+leakage_values=(0.2 0.8)
+
+# Calculate total number of parameter combinations
+total_combinations=$(( ${#index_values[@]} * ${#leakage_values[@]} ))
+
+# Ensure the array range matches the total combinations
+if [ $SLURM_ARRAY_TASK_ID -ge $total_combinations ]; then
+    echo "Invalid SLURM_ARRAY_TASK_ID: $SLURM_ARRAY_TASK_ID"
+    exit 1
+fi
+
+# Determine indices for this array job
+index_index=$(( SLURM_ARRAY_TASK_ID / ${#leakage_values[@]} ))
+leakage_index=$(( SLURM_ARRAY_TASK_ID % ${#leakage_values[@]} ))
+
+# Fetch actual parameter values
+index=${index_values[$index_index]}
+leakage=${leakage_values[$leakage_index]}
+
+# change path based on the directory where run.py is
+# Run the Python script with the chosen parameters
+python /Users/federicasibilla/Downloads/Auxotrophs/running_wm/run.py $index $leakage
