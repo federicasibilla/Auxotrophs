@@ -98,18 +98,25 @@ def dR_dt_maslov(R,N,param,mat):
     for i in range(n_s):
         # calculate essential nutrients modulation for each species (context-dependent uptake)
         if (np.sum(mat['ess'][i]!=0)):
-            mu  = np.min(R[mat['ess'][i]==1]/(R[mat['ess'][i]==1]+1))
-            lim = np.where(mat['ess'][i] == 1)[0][np.argmin(R[mat['ess'][i]==1]/(R[mat['ess'][i]==1]+1))]
-            l_eff=param['l'].copy()*mu + (1-mu)     # modulate uptakes 
-            l_eff[lim]=param['l'].copy()[lim]
+            if np.min(R[mat['ess'][i]==1])<param['Rstar']:
+                mu  = np.max(np.min((R[mat['ess'][i]==1]-param['Rstar'])/((R[mat['ess'][i]==1]-param['Rstar'])+1)),0) # mu is the modulation
+            else:
+                mu  = np.min(R[mat['ess'][i]==1]/(R[mat['ess'][i]==1]+1))
+            lim = np.where(mat['ess'][i] == 1)[0][np.argmin(R[mat['ess'][i]==1]/(R[mat['ess'][i]==1]+1))]   # lim is the index of the limiting
+            l_eff=param['l'].copy()*mu + (1-mu)   # modulate uptakes 
             l_eff[lim]=param['l'][lim].copy()     # restore uptake of the limiting one to max
             prod += np.dot(N[i]*mat['uptake'][i]*R/(1+R)*param['w']*l_eff,(D_s_norma[i].T))*1/param['w']
         else:
             prod += np.dot(N[i]*mat['uptake'][i]*R/(1+R)*param['w']*param['l'],(D_s_norma[i].T))*1/param['w']
 
-    # resource loss due to uptake (not modulated by essentials)
+    # resource loss due to uptake 
     out = np.dot((mat['uptake']*R/(1+R)).T,N.T)
     out[np.abs(out)<1e-14]=0
+
+    # building blocks loss for maintenance
+    out_ss = np.sum(
+    mat['ess'] * (param['Rstar'] / (1 + param['Rstar'])) * N[:, np.newaxis],
+    axis=0)
         
     # resource replenishment
     ext = 1/param['tau']*(param['ext']-R)
@@ -118,7 +125,7 @@ def dR_dt_maslov(R,N,param,mat):
     dRdt_squared=(ext+prod-out)**2
     dRdt_squared[np.abs(dRdt_squared)<1e-14]=0
 
-    return ext+prod-out
+    return ext+prod-out-out_ss
 
 #-------------------------------------------------------------------------------------------------------------------
 # define chemicals dynamics, monod+uptake aux modulation only partial: a part of uptake is independent on the 
@@ -295,8 +302,8 @@ def dN_dt(t,N,R,param,mat):
         if (np.sum(mat['ess'][i]!=0)):
             mu  = np.min(R[mat['ess'][i]==1]/(R[mat['ess'][i]==1]+1))
             lim = np.where(mat['ess'][i] == 1)[0][np.argmin(R[mat['ess'][i]==1]/(R[mat['ess'][i]==1]+1))]
-            up_eff[i]=mat['uptake'][i]*mu      # modulate uptakes 
-            up_eff[i,lim]=mat['uptake'][i,lim] # restore uptake of the limiting one to max
+            up_eff[i]=mat['uptake'][i]*mu             # modulate uptakes 
+            up_eff[i,lim]=mat['uptake'][i,lim].copy() # restore uptake of the limiting one to max
 
     # effect of resources
     growth_vector = param['g']*(np.sum(param['w']*(1-param['l'])*up_eff*mat['sign']*R/(1+R),axis=1)) 
@@ -366,13 +373,16 @@ def dN_dt_maslov(t,N,R,param,mat):
     for i in range(n_s):
 
         l[i] = param['l'].copy()
-        
+
         if (np.sum(mat['ess'][i]!=0)):
-            mu  = np.min(R[mat['ess'][i]==1]/(R[mat['ess'][i]==1]+1))
-            lim = np.where(mat['ess'][i] == 1)[0][np.argmin(R[mat['ess'][i]==1]/(R[mat['ess'][i]==1]+1))]
-            l_eff=param['l'].copy()*mu + (1-mu)     # modulate uptakes 
-            l_eff[lim]=param['l'][lim].copy()     # restore uptake of the limiting one to max
-            l[i] = l_eff
+                if np.min(R[mat['ess'][i]==1])<param['Rstar']:
+                    mu  = np.max(np.min((R[mat['ess'][i]==1]-param['Rstar'])/((R[mat['ess'][i]==1]-param['Rstar'])+1)),0) # mu is the modulation
+                else:
+                    mu  = np.min(R[mat['ess'][i]==1]/(R[mat['ess'][i]==1]+1))
+                lim = np.where(mat['ess'][i] == 1)[0][np.argmin(R[mat['ess'][i]==1]/(R[mat['ess'][i]==1]+1))]   # lim is the index of the limiting
+                l_eff=param['l'].copy()*mu + (1-mu)   # modulate uptakes 
+                l_eff[lim]=param['l'][lim].copy()     # restore uptake of the limiting one to max
+                l[i] = l_eff
                 
 
     # effect of resources

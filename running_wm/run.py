@@ -21,6 +21,11 @@ import pandas as pd
 
 import well_mixed
 
+# find base path
+# Path of the current file
+current_file_path = os.path.abspath(__file__)
+# Go up 2 levels (adjust as needed)
+base_path = os.path.dirname(os.path.dirname(os.path.dirname(current_file_path)))
 
 def run_wm(df_index,leakage):
 
@@ -33,7 +38,7 @@ def run_wm(df_index,leakage):
     """
 
     # change path to where the dataframe is stored
-    networks_df = pd.read_pickle('/Users/federicasibilla/Downloads/Auxotrophs/generating_networks/generated_networks_df.pkl')
+    networks_df = pd.read_pickle(f'{base_path}/Auxotrophs/generating_networks/generated_networks_df.pkl')
     # extract parameters
     network     = networks_df.iloc[df_index] # select the network from the dataframe
     n_s, n_r, n_consumed, n_producers = networks_df['network_id'].str.split('_', expand=True).iloc[df_index, :4].astype(int)
@@ -112,6 +117,9 @@ def run_wm(df_index,leakage):
     l_O = np.zeros((n_r))
     l_O[0] = leakage
 
+    # mainten. flux
+    Rstar = 1/100
+
     # define parameters
     param_F = {
         'w'  : np.ones((n_r))/(n_consumed+1),              # energy conversion     [energy/mass]
@@ -130,15 +138,16 @@ def run_wm(df_index,leakage):
         'm'  : m,                                          # maintainance requ.    [energy/time]
         'ext': ext_O,                                      # external replenishment  
         'tau' : tau,                                                                       
-        'guess_wm': guess                                  # initial resources guess
+        'guess_wm': guess,                                 # initial resources guess
+        'Rstar': Rstar
     }
 
     initial_condition = np.random.normal(loc=1, scale=0.1, size=n_s)
 
     # run CR model for 200000 steps 
-    N_fin_F,R_fin_F=well_mixed.run_wellmixed(initial_condition,param_F,mat_F,well_mixed.dR_dt_nomod,well_mixed.dN_dt,1000)
+    N_fin_F,R_fin_F=well_mixed.run_wellmixed(initial_condition,param_F,mat_F,well_mixed.dR_dt_nomod,well_mixed.dN_dt,100)
     # run CR model for 200000 steps 
-    N_fin_O,R_fin_O=well_mixed.run_wellmixed(initial_condition,param_O,mat_O,well_mixed.dR_dt_maslov,well_mixed.dN_dt_maslov,1000)
+    N_fin_O,R_fin_O=well_mixed.run_wellmixed(initial_condition,param_O,mat_O,well_mixed.dR_dt_maslov,well_mixed.dN_dt_maslov,100)
 
     # ---------------------------------------------------------------------------------------------------------------------
 
