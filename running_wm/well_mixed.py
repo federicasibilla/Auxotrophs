@@ -151,10 +151,9 @@ def dR_dt_maslov(R,N,param,mat):
     for i in range(n_s):
         # calculate essential nutrients modulation for each species (context-dependent uptake)
         if (np.sum(mat['ess'][i]!=0)):
-            if np.min(R[mat['ess'][i]==1])<param['Rstar']:
-                mu  = np.max(np.min((R[mat['ess'][i]==1]-param['Rstar'])/((R[mat['ess'][i]==1]-param['Rstar'])+1)),0) # mu is the modulation
-            else:
-                mu  = np.min(R[mat['ess'][i]==1]/(R[mat['ess'][i]==1]+1))
+            
+            mu  = np.max((np.min(R[mat['ess'][i]==1])-param['Rstar'])/((np.min(R[mat['ess'][i]==1])-param['Rstar'])+1),0) # mu is the modulation
+            
             lim = np.where(mat['ess'][i] == 1)[0][np.argmin(R[mat['ess'][i]==1]/(R[mat['ess'][i]==1]+1))]   # lim is the index of the limiting
             l_eff=param['l'].copy()*mu + (1-mu)   # modulate uptakes 
             l_eff[lim]=param['l'][lim].copy()     # restore uptake of the limiting one to max
@@ -162,15 +161,19 @@ def dR_dt_maslov(R,N,param,mat):
         else:
             prod += np.dot(N[i]*mat['uptake'][i]*R/(1+R)*param['w']*param['l'],(D_s_norma[i].T))*1/param['w']
 
+    # separate uptake in essential and not before aggregating
+    out_non_ess = np.dot(((mat['uptake']*(1-mat['ess']))*R/(1+R)).T,N.T)
+    # out ess depends on Rlim<R*
+    if (np.min(R[mat['ess'][i]==1])-param['Rstar'])>0:
+        out_ess = np.dot(((mat['uptake']*mat['ess'])*np.min(R[mat['ess'][i]==1])/(1+np.min(R[mat['ess'][i]==1]))).T,N.T)
+    else:
+        R_bb = np.maximum(R,param['Rstar'])
+        out_ess = np.dot((mat['uptake']*mat['ess']*R_bb/(1+R_bb)).T,N.T)
+
     # resource loss due to uptake 
-    out = np.dot((mat['uptake']*R/(1+R)).T,N.T)
+    out = out_non_ess + out_ess
     out[np.abs(out)<1e-14]=0
 
-    # building blocks loss for maintenance
-    out_ss = np.sum(
-    mat['ess'] * (param['Rstar'] / (1 + param['Rstar'])) * N[:, np.newaxis],
-    axis=0)
-        
     # resource replenishment
     ext = 1/param['tau']*(param['ext']-R)
 
@@ -178,7 +181,7 @@ def dR_dt_maslov(R,N,param,mat):
     dRdt_squared=(ext+prod-out)**2
     dRdt_squared[np.abs(dRdt_squared)<1e-14]=0
 
-    return ext+prod-out-out_ss
+    return ext+prod-out
 
 #-------------------------------------------------------------------------------------------------------------------
 # define chemicals dynamics, monod+uptake aux modulation only partial: a part of uptake is independent on the 
@@ -332,6 +335,73 @@ def dR_dt_linear(R,N,param,mat):
 
     return ext+prod-out
 
+#-------------------------------------------------------------------------------------------------------------------
+def dR_dt_maslov_optimized(R, N, param, mat):
+    n_s, n_r = N.shape[0], R.shape[0]
+    prod = np.zeros(n_r)
+
+    # Precompute normalized metabolic maps
+    D_species = mat['met'][np.newaxis, :, :] * mat['spec_met'][:, :, np.newaxis]
+    D_s_norma = np.divide(
+        D_species,
+        np.sum(D_species, axis=1, keepdims=True),
+        out=np.zeros_like(D_species),
+        where=np.sum(D_species, axis=1, keepdims=True) != 0
+    )
+
+    for i in range(n_s):
+        uptake_i = mat['uptake'][i]
+        if np.any(mat['ess'][i]):
+            ess_mask = mat['ess'][i] == 1
+            R_ess = R[ess_mask]
+
+            # Compute modulation factor (mu)
+            if np.any(R_ess > param['Rstar']):
+                mu = np.clip((np.min(R_ess) - param['Rstar']) / ((np.min(R_ess) - param['Rstar']) + 1), 0, 1)
+            else:
+                mu = 0
+
+            # Find the limiting nutrient
+            lim_idx = np.argmin(R_ess / (1 + R_ess))
+            lim_global_idx = np.where(ess_mask)[0][lim_idx]
+
+            # Modulate uptakes
+            l_eff = param['l'] * mu + (1 - mu)
+            l_eff[lim_global_idx] = param['l'][lim_global_idx]
+        else:
+            l_eff = param['l']
+
+        # Compute production term
+        uptake_term = N[i] * uptake_i * R / (1 + R) * param['w'] * l_eff
+        prod += (uptake_term @ D_s_norma[i].T) / param['w']
+
+    # Separate uptake into essential and non-essential before aggregating
+    out_non_ess = (mat['uptake'] * (1 - mat['ess']) * R / (1 + R)).T @ N
+    out_ess = np.zeros_like(out_non_ess)
+
+    for i in range(n_s):
+        if np.any(mat['ess'][i]):
+            ess_mask = mat['ess'][i] == 1
+            R_ess = R[ess_mask]
+            if np.any(R_ess > param['Rstar']):
+                R_min_ess = np.min(R_ess)
+            else:
+                R_min_ess = param['Rstar']
+            out_ess += (mat['uptake'][i] * mat['ess'][i] * R_min_ess / (1 + R_min_ess)) * N[i]
+
+    # Resource loss due to uptake
+    out = out_non_ess + out_ess
+    out[np.abs(out) < 1e-14] = 0
+
+    # Resource replenishment
+    ext = (1 / param['tau']) * (param['ext'] - R)
+
+    # Compute the final rate of change
+    dRdt_squared = (ext + prod - out) ** 2
+    dRdt_squared[np.abs(dRdt_squared) < 1e-14] = 0
+
+    return ext + prod - out
+
 #--------------------------------------------------------------------------------------------------
 # define species dynamics
 
@@ -428,10 +498,9 @@ def dN_dt_maslov(t,N,R,param,mat):
         l[i] = param['l'].copy()
 
         if (np.sum(mat['ess'][i]!=0)):
-                if np.min(R[mat['ess'][i]==1])<param['Rstar']:
-                    mu  = np.max(np.min((R[mat['ess'][i]==1]-param['Rstar'])/((R[mat['ess'][i]==1]-param['Rstar'])+1)),0) # mu is the modulation
-                else:
-                    mu  = np.min(R[mat['ess'][i]==1]/(R[mat['ess'][i]==1]+1))
+                
+                mu  = np.max((np.min(R[mat['ess'][i]==1])-param['Rstar'])/((np.min(R[mat['ess'][i]==1])-param['Rstar'])+1),0) # mu is the modulation
+                
                 lim = np.where(mat['ess'][i] == 1)[0][np.argmin(R[mat['ess'][i]==1]/(R[mat['ess'][i]==1]+1))]   # lim is the index of the limiting
                 l_eff=param['l'].copy()*mu + (1-mu)   # modulate uptakes 
                 l_eff[lim]=param['l'][lim].copy()     # restore uptake of the limiting one to max
@@ -444,6 +513,56 @@ def dN_dt_maslov(t,N,R,param,mat):
     # sum
     dNdt = N*(growth_vector)
     dNdt[np.abs(dNdt)<1e-14]=0
+
+    return dNdt
+
+#--------------------------------------------------------------------------------------------------
+def dN_dt_maslov_optimized(t, N, R, param, mat):
+    """
+    Optimized version of dN_dt_maslov that maintains exact behavior.
+
+    R: vector, n_r, current resource concentration
+    N: vector, n_s, current species abundance
+    param, mat: dictionaries, parameters and matrices
+
+    RETURNS N*(growth_vector - 1/param['tau_s']), vector, n_s, the new state of species, n_s
+    """
+    
+    n_s = N.shape[0]
+    n_r = R.shape[0]
+    l = np.zeros((n_s, n_r))
+
+    # Pre-computation of mu and limiting nutrient for each species
+    for i in range(n_s):
+        l[i] = param['l'].copy()
+
+        if np.any(mat['ess'][i] != 0):  # Check for essential nutrients for this species
+            ess_mask = mat['ess'][i] == 1
+            R_ess = R[ess_mask]
+
+            # Compute mu (modulation factor)
+            if np.any(R_ess > param['Rstar']):
+                mu = np.clip((np.min(R_ess) - param['Rstar']) / ((np.min(R_ess) - param['Rstar']) + 1), 0, 1)
+            else:
+                mu = 0
+
+            # Find the limiting nutrient
+            lim_idx = np.argmin(R_ess / (R_ess + 1))
+            lim_global_idx = np.where(ess_mask)[0][lim_idx]
+
+            # Modulate uptakes
+            l_eff = param['l'] * mu + (1 - mu)
+            l_eff[lim_global_idx] = param['l'][lim_global_idx]
+            l[i] = l_eff
+
+    # Compute growth vector
+    growth_vector = param['g'] * (
+        np.sum(param['w'] * (1 - l) * mat['uptake'] * mat['sign'] * R / (1 + R), axis=1)
+    ) - param['m']
+
+    # Compute rate of change of N
+    dNdt = N * growth_vector
+    dNdt[np.abs(dNdt) < 1e-14] = 0
 
     return dNdt
 
@@ -541,6 +660,7 @@ def run_wellmixed(N0,param,mat,dR,dN,maxiter):
         if (np.abs(N_prev-N_out)<1e-8).all() and i>1000:
             j +=1
         if j>5000:
+            print('simulation will stop: SS reached')
             break
 
         # stop due to time limit

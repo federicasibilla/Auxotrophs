@@ -147,7 +147,7 @@ def run_wm(df_index,leakage):
     # run CR model for 200000 steps 
     N_fin_F,R_fin_F=well_mixed.run_wellmixed(initial_condition,param_F,mat_F,well_mixed.dR_dt_nomod,well_mixed.dN_dt,100)
     # run CR model for 200000 steps 
-    N_fin_O,R_fin_O=well_mixed.run_wellmixed(initial_condition,param_O,mat_O,well_mixed.dR_dt_maslov,well_mixed.dN_dt_maslov,100)
+    N_fin_O,R_fin_O=well_mixed.run_wellmixed(initial_condition,param_O,mat_O,well_mixed.dR_dt_maslov_optimized,well_mixed.dN_dt_maslov_optimized,100)
 
     # ---------------------------------------------------------------------------------------------------------------------
 
