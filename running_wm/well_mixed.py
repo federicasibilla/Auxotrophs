@@ -3,6 +3,7 @@
 well_mixed.py: file to store definition of the well-mixed model
 
 CONTAINS: - dR_dt: function storing the dynamics of resources
+          - dR_dt_maslov_nocost: function with reinsertion in environment
           - dR_dt_maslov: function with reinsertion in environment
           - dR_dt_linear: function storing the dynamics of resources, when linear
           - dR_dt_nomod: function with R dynamics with uptake not regulated by auxotrophies
@@ -59,6 +60,58 @@ def dR_dt(R,N,param,mat):
     # vector long n_r with produced chemicals
     prod = np.sum(np.einsum('ij,ijk->ik', up_eff*N[:, np.newaxis]*R/(1+R)*param['w']*param['l'], D_s_norma),axis=0)/param['w'] 
     
+    # resource replenishment
+    ext = 1/param['tau']*(param['ext']-R)
+
+    # sum
+    dRdt_squared=(ext+prod-out)**2
+    dRdt_squared[np.abs(dRdt_squared)<1e-14]=0
+
+    return ext+prod-out
+
+#-------------------------------------------------------------------------------------------------------------------
+# define chemicals dynamics, monod+uptake aux modulation
+
+def dR_dt_maslov_nocost(R,N,param,mat):
+
+    """
+    R: vector, n_r, current resource concentration
+    N: vecotr, n_s, current species abundance
+    param, mat: dictionaries, parameters and matrice
+
+    RETURNS dRdt_squared: vector, n_r, the time derivative of nutrients concentration (reaction part of RD equation)
+                                
+    """
+
+    n_s = N.shape[0]
+    n_r = R.shape[0]
+
+    prod = np.zeros((n_r))
+    
+    # species specific metabolism and renormalization
+    D_species = np.tile(mat['met'],(n_s,1,1))*np.transpose((np.tile(mat['spec_met'],(1,1,n_r)).reshape(n_s,n_r,n_r)),axes=(0,2,1))
+    D_s_norma = np.zeros((n_s,n_r,n_r))
+    for i in range(n_s):
+        sums = np.sum(D_species[i], axis=0)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            D_s_norma[i] = np.where(sums != 0, D_species[i] / sums, D_species[i])
+
+    for i in range(n_s):
+        # calculate essential nutrients modulation for each species (context-dependent uptake)
+        if (np.sum(mat['ess'][i]!=0)):
+            mu  = np.min(R[mat['ess'][i]==1]/(R[mat['ess'][i]==1]+1))
+            lim = np.where(mat['ess'][i] == 1)[0][np.argmin(R[mat['ess'][i]==1]/(R[mat['ess'][i]==1]+1))]
+            l_eff=param['l'].copy()*mu + (1-mu)     # modulate uptakes 
+            l_eff[lim]=param['l'].copy()[lim]
+            l_eff[lim]=param['l'][lim].copy()     # restore uptake of the limiting one to max
+            prod += np.dot(N[i]*mat['uptake'][i]*R/(1+R)*param['w']*l_eff,(D_s_norma[i].T))*1/param['w']
+        else:
+            prod += np.dot(N[i]*mat['uptake'][i]*R/(1+R)*param['w']*param['l'],(D_s_norma[i].T))*1/param['w']
+
+    # resource loss due to uptake (not modulated by essentials)
+    out = np.dot((mat['uptake']*R/(1+R)).T,N.T)
+    out[np.abs(out)<1e-14]=0
+        
     # resource replenishment
     ext = 1/param['tau']*(param['ext']-R)
 
@@ -383,6 +436,47 @@ def dN_dt_maslov(t,N,R,param,mat):
                 l_eff=param['l'].copy()*mu + (1-mu)   # modulate uptakes 
                 l_eff[lim]=param['l'][lim].copy()     # restore uptake of the limiting one to max
                 l[i] = l_eff
+                
+
+    # effect of resources
+    growth_vector = param['g']*(np.sum(param['w']*(1-l)*mat['uptake']*mat['sign']*R/(1+R),axis=1))-param['m']
+
+    # sum
+    dNdt = N*(growth_vector)
+    dNdt[np.abs(dNdt)<1e-14]=0
+
+    return dNdt
+
+#--------------------------------------------------------------------------------------------------
+# define species dynamics when linear 
+
+def dN_dt_maslov_nocost(t,N,R,param,mat):
+
+    """
+    R: vector, n_r, current resource concentration
+    N: vecotr, n_s, current species abundance
+    param, mat: dictionaries, parameters and matrice
+
+    RETURNS N*(growth_vector-1/param['tau_s']), vector, n_s, the new state of species, n_s
+
+    """
+    
+    n_s = N.shape[0]
+    n_r = R.shape[0]
+
+    l = np.zeros((n_s,n_r))
+
+    # check essential nutrients presence (at each site)
+    for i in range(n_s):
+
+        l[i] = param['l'].copy()
+        
+        if (np.sum(mat['ess'][i]!=0)):
+            mu  = np.min(R[mat['ess'][i]==1]/(R[mat['ess'][i]==1]+1))
+            lim = np.where(mat['ess'][i] == 1)[0][np.argmin(R[mat['ess'][i]==1]/(R[mat['ess'][i]==1]+1))]
+            l_eff=param['l'].copy()*mu + (1-mu)     # modulate uptakes 
+            l_eff[lim]=param['l'][lim].copy()     # restore uptake of the limiting one to max
+            l[i] = l_eff
                 
 
     # effect of resources
