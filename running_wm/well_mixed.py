@@ -367,7 +367,7 @@ def dR_dt_maslov_optimized(R, N, param, mat):
 
             # Modulate uptakes
             l_eff = param['l'] * mu + (1 - mu)
-            l_eff[lim_global_idx] = param['l'][lim_global_idx]
+            l_eff[lim_global_idx] = param['l'][lim_global_idx].copy()
         else:
             l_eff = param['l']
 
@@ -383,11 +383,11 @@ def dR_dt_maslov_optimized(R, N, param, mat):
         if np.any(mat['ess'][i]):
             ess_mask = mat['ess'][i] == 1
             R_ess = R[ess_mask]
-            if np.any(R_ess > param['Rstar']):
-                R_min_ess = np.min(R_ess)
+            R_min_ess = np.min(R_ess)
+            if np.any(R_min_ess > param['Rstar']):
+                out_ess += (mat['uptake'][i] * mat['ess'][i] * R_min_ess / (1 + R_min_ess)) * N[i]
             else:
-                R_min_ess = param['Rstar']
-            out_ess += (mat['uptake'][i] * mat['ess'][i] * R_min_ess / (1 + R_min_ess)) * N[i]
+                out_ess += (mat['uptake'][i] * mat['ess'][i] * np.minimum(R_ess, param['Rstar']) / (1 + np.minimum(R_ess, param['Rstar']))) * N[i]
 
     # Resource loss due to uptake
     out = out_non_ess + out_ess
@@ -552,7 +552,7 @@ def dN_dt_maslov_optimized(t, N, R, param, mat):
 
             # Modulate uptakes
             l_eff = param['l'] * mu + (1 - mu)
-            l_eff[lim_global_idx] = param['l'][lim_global_idx]
+            l_eff[lim_global_idx] = param['l'][lim_global_idx].copy()
             l[i] = l_eff
 
     # Compute growth vector

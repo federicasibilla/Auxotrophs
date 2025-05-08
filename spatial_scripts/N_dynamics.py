@@ -199,6 +199,8 @@ def growth_rates_maslov_nocost(R, N, param, mat):
 
     # modulate leakage
     leakage = param['l']*mu + (1-mu) 
+    # Reset leakage for the limiting nutrient to its original parameter
+    leakage[np.arange(n)[:, None], np.arange(n), lim] = param['l'][lim]
     
     # Modulate uptake and insert uptake rates
     uptake = upp * mat['uptake'][species]
@@ -244,7 +246,8 @@ def growth_rates_maslov(R, N, param, mat):
     
     # Calculate Michaelis-Menten at each site and mask for essential resources
     upp = R / (R + 1)
-    up_ess = np.where(mask == 0, 1, upp)
+    upp_cost = np.maximum(R - param['Rstar'] / (1 + R - param['Rstar']), 0)
+    up_ess = np.where(mask == 0, 1, upp_cost)
     
     # Find limiting nutrient and calculate corresponding mu modulation
     lim = np.argmin(up_ess, axis=2)
@@ -261,6 +264,8 @@ def growth_rates_maslov(R, N, param, mat):
 
     # modulate leakage
     leakage = param['l']*mu + (1-mu) 
+    # Reset leakage for the limiting nutrient to its original parameter
+    leakage[np.arange(n)[:, None], np.arange(n), lim] = param['l'][lim].copy()
     
     # Modulate uptake and insert uptake rates
     uptake = upp * mat['uptake'][species]
