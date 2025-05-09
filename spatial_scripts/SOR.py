@@ -288,6 +288,7 @@ def SOR_3D_noflux(N, param, mat, source, initial_guess):
         padded_R[i_black,j_black,1,:] += param['sor']*delta[i_black-1,j_black-1]
 
         if (np.abs(delta[1:-1,1:-1]/(padded_R[2:n,2:n,1]+1e-14))<=stop).all():
+                print('converged')
                 break
 
         if (padded_R<0).any():
@@ -305,7 +306,8 @@ def SOR_3D_noflux(N, param, mat, source, initial_guess):
         # check for very small deltas
         if (np.abs(delta_list[-1])<1e-10):
             break
-        if (len(delta_list)>1000):
+        if (len(delta_list)>10000):
+            print('too many iterations')
             break
     
     R_eq = padded_R[1:n+1,1:n+1,1,:]

@@ -440,8 +440,15 @@ def birth_death_biomass(N, g, biomass):
         print('error with birth')
         sys.exit()
 
-    # calculate division times of all cells 
-    times_mat = np.log(2/biomass)/g
+    # Initialize times_mat with np.inf everywhere
+    times_mat = np.full_like(g, np.inf)
+
+    # Create mask for valid entries
+    valid_mask = (g > 1e-14) & (biomass > 0)
+
+    # Perform safe division only where valid
+    times_mat[valid_mask] = np.log(2 / biomass[valid_mask]) / g[valid_mask]
+
     # find the fastest: first devider
     t_div = np.min(times_mat)
     indices = np.where(times_mat == t_div)

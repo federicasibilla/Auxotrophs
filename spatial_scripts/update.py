@@ -13,11 +13,9 @@ CONTAINS: - simulate_3D: function to run a simulation using the SOR_3D algorithm
 """
 
 import numpy as np
-import numba
 
 from time import time
 from scipy.interpolate import RegularGridInterpolator
-from numba import jit
 
 from SOR import *
 from N_dynamics import *
