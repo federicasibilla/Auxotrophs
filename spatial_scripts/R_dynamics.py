@@ -211,8 +211,14 @@ def f_maslov(R, N, param, mat):
     Rlim_val = np.min(R_ess_masked, axis=2)            # (n, n)
     lim_mask = Rlim_val > param['Rstar']               # (n, n)
 
-    # Compute essential uptake
-    Rlim_uptake = Rlim_val / (1 + Rlim_val)                                # (n, n)
+    no_ess = (ess_mask.sum(axis=2) == 0)  # (n, n)
+
+    # Safe Rlim_uptake
+    with np.errstate(invalid='ignore', divide='ignore'):
+        Rlim_uptake = Rlim_val / (1 + Rlim_val)
+    Rlim_uptake[no_ess] = 1.0
+
+
     Rlim_uptake_bcast = Rlim_uptake[:, :, np.newaxis]                      # (n, n, 1)
     R_bb = np.minimum(R, param['Rstar'])                                   # (n, n, n_r)
     up_ess = np.where(
@@ -227,8 +233,10 @@ def f_maslov(R, N, param, mat):
     # Total uptake
     upp = up_ess + up_non_ess  # (n, n, n_r)
 
-    # Compute modulation mu (same as non-cost version)
-    mu = np.maximum((Rlim_val - param['Rstar']) / ((Rlim_val - param['Rstar']) + 1), 0)  # (n, n)
+    # Step 4: Safe mu computation
+    with np.errstate(invalid='ignore', divide='ignore'):
+        mu = np.maximum((Rlim_val - param['Rstar']) / ((Rlim_val - param['Rstar']) + 1), 0)
+    mu[no_ess] = 1.0 
 
     # Compute limiting index per grid point
     Rlim_for_index = np.where(ess_mask == 1, R / (1 + R), np.inf)

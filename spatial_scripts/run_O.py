@@ -32,8 +32,8 @@ def spatial_O(df_index, leakage):
     """
 
     # change thsi to the subsampoled dataframe one available
-    #networks_df = pd.read_pickle(f'{base_path}/Auxotrophs/generating_networks/generated_networks_df.pkl')
-    networks_df = pd.read_pickle(f'{base_path}/Auxotrophs/simple_examples_sanity_checks/examples_df.pkl')
+    networks_df = pd.read_pickle(f'{base_path}/Auxotrophs/generating_networks/generated_networks_df.pkl')
+    #networks_df = pd.read_pickle(f'{base_path}/Auxotrophs/simple_examples_sanity_checks/examples_df.pkl')
     # extract parameters
     network     = networks_df.iloc[df_index] # select the network from the dataframe
 
@@ -130,16 +130,16 @@ def spatial_O(df_index, leakage):
     param['acc']=1e-5             
 
     # rescale influx so that wm and space compare in terms of supplied energy
-    param['ext']=param['ext']*2/param['tau']
+    param['ext']=param['ext']/param['tau']
 
     # simulate in space
     # initial guesses and conditions
     R_space_ig = np.zeros((n,n,n_r))
     R_space_ig[:,:,param['ext']>0.]=param['ext'][0]/2
     N0_space   = np.zeros((n,n))
-    #N0_space   = N_dynamics.encode(np.random.randint(0, n_s, size=(n,n)),np.array(np.arange(n_s)))
-    N0_space[:n//2, :] = 0  # First half (species 0)
-    N0_space[n//2:, :] = 1  # Second half (species 1)
+    N0_space   = N_dynamics.encode(np.random.randint(0, n_s, size=(n,n)),np.array(np.arange(n_s)))
+    #N0_space[:n//2, :] = 0  # First half (species 0)
+    #N0_space[n//2:, :] = 1  # Second half (species 1)
     N0_space = N_dynamics.encode(N0_space, np.array(np.arange(n_s)))
     biomass = np.random.uniform(0, 2, (n, n)) 
 
